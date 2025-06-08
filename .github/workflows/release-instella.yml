@@ -1,0 +1,66 @@
+name: Auto Build & Release Instella
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'  # Runs daily at 2AM IST (optional)
+
+permissions:
+  contents: write  # Required for release uploads
+
+jobs:
+  build-instella:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apktool zipalign apksigner curl
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+
+      - name: Fetch Instagram APK
+        id: fetch
+        run: |
+          bash scripts/fetch_apk.sh
+          echo "APK_PATH=$(ls downloads/*.apk | tail -n1)" >> $GITHUB_ENV
+
+      - name: Apply Patch
+        id: patch
+        run: |
+          bash scripts/patch_original.sh "$APK_PATH"
+          echo "PATCHED_APK=$(ls downloads/*-patched.apk | tail -n1)" >> $GITHUB_ENV
+
+      - name: Clone and Rename
+        id: clone
+        run: |
+          bash scripts/clone_and_patch.sh "$PATCHED_APK"
+          echo "CLONE_APK=$(ls downloads/*-clone.apk | tail -n1)" >> $GITHUB_ENV
+
+      - name: Sign & Align
+        id: sign
+        run: |
+          bash scripts/sign_and_align.sh \
+            "$PATCHED_APK" "$CLONE_APK" \
+            keystore.jks "${{ secrets.KEYSTORE_PASSWORD }}" "${{ secrets.KEY_ALIAS }}"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            orig-signed.apk
+            clone-signed.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
