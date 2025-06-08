@@ -34,7 +34,7 @@ jobs:
       - name: Fetch Instagram APK
         id: fetch
         run: |
-          bash scripts/fetch_apk.sh
+          bash app/scripts/fetch_apk.sh
           echo "APK_PATH=$(ls downloads/*.apk | tail -n1)" >> $GITHUB_ENV
 
       - name: Apply Patch
